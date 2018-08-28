@@ -1,25 +1,14 @@
 #include <Arduino.h>
-
 #include <ESP8266WiFi.h>
 #include <BlynkSimpleEsp8266.h>
-
 #include <Adafruit_SSD1306.h>
-
 #include <SimpleTimer.h>
-
 #include <DHT.h>
-
 #include <ESP8266HTTPClient.h>
-
-#include <Utilities.h>
 #include <ArduinoJson.h>
 
-/*#
-#include <Wire.h>
-#include <SPI.h>
-#include <Adafruit_GFX.h>
-#
-*/
+#include <Utilities.h>
+
 // OLED initialization
 #define OLED_RESET D4
 #define NUMFLAKES 10
@@ -37,13 +26,19 @@ DHT dht(DHTPIN, DHTTYPE); // enabled DHT sensor
 char auth[] = "7bb7485f6eba41a0a36de66a90ed8ea1";
 char ssid[] = "RAKAMAKAFO";
 char pass[] = "22312231";
+// PIN MAPPING
+// V1   Temperature
+// V3   Humidity
 
 // Timers
 SimpleTimer sendTemperatureTimer;
 SimpleTimer updateOutTempTimer;
 
 int outTemp;
-int lx;
+String outConditions;
+String customValue1;
+String customValue2;
+String customValue3;
 StaticJsonBuffer<2048> jsonBuffer;
 
 String getJson()
@@ -82,14 +77,13 @@ void updateOutTemp()
         Serial.println("parseObject() failed");
         return;
     }
-
     
     outTemp = root["main"]["temp"];
-    String conditions = root["weather"][0]["main"];
+    outConditions = root["weather"][0]["main"].asString();
     Serial.println(json);
 }
 
-void renderDisplay(float intTemp, float outTemp, int customValue1)
+void renderPage1(float intTemp, float outTemp, String customValue1)
 {
     display.clearDisplay();
     display.setCursor(0, 0);
@@ -118,14 +112,13 @@ void sendTemperature()
     {
         Blynk.virtualWrite(1, t); // send to Blynk virtual pin 1 temperature value
         Blynk.virtualWrite(3, h); // send to Blynk virtual pin 3 humidity value
-        renderDisplay(t, outTemp, 777);
+        renderPage1(t, outTemp, outConditions);
     }
 }
 
 BLYNK_WRITE(V2)
 {
-    //light value
-    lx = param.asInt();
+    customValue1 = param.asString();
     Blynk.virtualWrite(5, 100);
 }
 
@@ -142,12 +135,13 @@ void setup()
     sendTemperatureTimer.setInterval(10000L, sendTemperature);
     updateOutTempTimer.setInterval(900000L, updateOutTemp);
 
+    sendTemperature();
     updateOutTemp();
 }
 
 void loop()
 {
-    Blynk.run();                // run blynk
-    sendTemperatureTimer.run(); // run timer
+    Blynk.run();                
+    sendTemperatureTimer.run(); 
     updateOutTempTimer.run();
 }
