@@ -17,6 +17,8 @@
 #define DELTAY 2
 Adafruit_SSD1306 display(OLED_RESET);
 
+// OLED 2: U8g2
+
 // DHT initialization
 #define DHTPIN 2          // port where DTH22 is connected (D4 is IO2 on wemos D1 mini)
 #define DHTTYPE DHT22     // I use DHT22, change to other DHT senzor if you use other one
@@ -34,7 +36,11 @@ char pass[] = "22312231";
 SimpleTimer sendTemperatureTimer;
 SimpleTimer updateOutTempTimer;
 
+int intTemp;
+int intHum;
 int outTemp;
+int outHum;
+
 String outConditions;
 String customValue1;
 String customValue2;
@@ -79,22 +85,32 @@ void updateOutTemp()
     }
     
     outTemp = root["main"]["temp"];
+    outHum = root["main"]["humidity"];
     outConditions = root["weather"][0]["main"].asString();
     Serial.println(json);
 }
 
-void renderPage1(float intTemp, float outTemp, String customValue1)
+void renderPage1(float intTemp, int intHum, float outTemp, int outHum, String customValue1, String customValue2)
 {
     display.clearDisplay();
     display.setCursor(0, 0);
     display.setTextSize(3);
-    display.println(Utilities::floatToString(intTemp, 0));
+        
+    String intTempSign = intTemp < 0 ? "" : "+";
+    String inSpacer = " ";
+    inSpacer += abs(intTemp) < 10 ? " " : "";
+    inSpacer += abs(intHum) < 10 ? " " : "";
+    display.println(intTempSign + Utilities::floatToString(intTemp, 0) + inSpacer + intHum + "%");
+    
     String outTempSign = outTemp < 0 ? "" : "+";
+    String outSpacer = " ";
+    outSpacer += abs(outTemp) < 10 ? " " : "";
+    outSpacer += abs(outHum) < 10 ? " " : "";
+    display.println(outTempSign + Utilities::floatToString(outTemp, 0) + outSpacer + outHum + "%");
 
-    display.println(outTempSign + outTemp);
     display.setTextSize(2);
-
     display.println(customValue1);
+    //display.println(customValue1 + "|" + customValue2);
     display.display();
 }
 
@@ -104,7 +120,7 @@ void sendTemperature()
 
     float h = dht.readHumidity();    // reads humidity from senzor and save to h
     float t = dht.readTemperature(); // reads temperature from senzor and save to t
-    if (isnan(h) or isnan(t))
+    if (isnan(h) || isnan(t))
     { // checks if readings from sensors were obtained
         Serial.println("sendTemperature error");
     }
@@ -112,14 +128,16 @@ void sendTemperature()
     {
         Blynk.virtualWrite(1, t); // send to Blynk virtual pin 1 temperature value
         Blynk.virtualWrite(3, h); // send to Blynk virtual pin 3 humidity value
-        renderPage1(t, outTemp, outConditions);
+        renderPage1(t, h, outTemp, outHum, outConditions, customValue2);
     }
 }
 
-BLYNK_WRITE(V2)
+BLYNK_WRITE(V11)
 {
-    customValue1 = param.asString();
-    Blynk.virtualWrite(5, 100);
+    customValue2 = param.asString();
+    Serial.println("BLYNK_WRITE(V11): " + customValue2);
+
+   // Blynk.virtualWrite(5, 100);
 }
 
 void setup()

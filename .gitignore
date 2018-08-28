@@ -4,3 +4,5 @@
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .lib/readme.txt
+.vscode/settings.json
+lib/readme.txt
