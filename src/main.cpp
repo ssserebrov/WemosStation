@@ -6,8 +6,17 @@
 #include <DHT.h>
 #include <ESP8266HTTPClient.h>
 #include <ArduinoJson.h>
+#include <Adafruit_BME280.h>
 
 #include <Utilities.h>
+
+struct Sensor
+{
+    float temperature;
+    int humidity;
+    int pressure;
+    String conditions;
+};
 
 // OLED initialization
 #define OLED_RESET D4
@@ -24,24 +33,25 @@ Adafruit_SSD1306 display(OLED_RESET);
 #define DHTTYPE DHT22     // I use DHT22, change to other DHT senzor if you use other one
 DHT dht(DHTPIN, DHTTYPE); // enabled DHT sensor
 
+// BME initialization
+Adafruit_BME280 bme; // I2C
+
 // Blynk initialization
 char auth[] = "7bb7485f6eba41a0a36de66a90ed8ea1";
 char ssid[] = "RAKAMAKAFO";
 char pass[] = "22312231";
 // PIN MAPPING
-// V1   Temperature
-// V3   Humidity
+// V1   DHT Temperature
+// V3   DHT Humidity
 
 // Timers
 SimpleTimer sendTemperatureTimer;
 SimpleTimer updateOutTempTimer;
 
-int intTemp;
-int intHum;
-int outTemp;
-int outHum;
+Sensor openWeatherSensor;
+Sensor dhtSensor;
+Sensor bmeSensor;
 
-String outConditions;
 String customValue1;
 String customValue2;
 String customValue3;
@@ -72,7 +82,7 @@ String getJson()
     return "";
 }
 
-void updateOutTemp()
+void updateOpenWeatherSensor()
 {
     String json = getJson();
     JsonObject &root = jsonBuffer.parseObject(json);
@@ -83,30 +93,30 @@ void updateOutTemp()
         Serial.println("parseObject() failed");
         return;
     }
-    
-    outTemp = root["main"]["temp"];
-    outHum = root["main"]["humidity"];
-    outConditions = root["weather"][0]["main"].asString();
+
+    openWeatherSensor.temperature = root["main"]["temp"];
+    openWeatherSensor.humidity = root["main"]["humidity"];
+    openWeatherSensor.conditions = root["weather"][0]["main"].asString();
     Serial.println(json);
 }
 
-void renderPage1(float intTemp, int intHum, float outTemp, int outHum, String customValue1, String customValue2)
+void renderPage1(float temp1, int hum1, float temp2, int hum2, String customValue1, String customValue2)
 {
     display.clearDisplay();
     display.setCursor(0, 0);
     display.setTextSize(3);
-        
-    String intTempSign = intTemp < 0 ? "" : "+";
-    String inSpacer = " ";
-    inSpacer += abs(intTemp) < 10 ? " " : "";
-    inSpacer += abs(intHum) < 10 ? " " : "";
-    display.println(intTempSign + Utilities::floatToString(intTemp, 0) + inSpacer + intHum + "%");
-    
-    String outTempSign = outTemp < 0 ? "" : "+";
-    String outSpacer = " ";
-    outSpacer += abs(outTemp) < 10 ? " " : "";
-    outSpacer += abs(outHum) < 10 ? " " : "";
-    display.println(outTempSign + Utilities::floatToString(outTemp, 0) + outSpacer + outHum + "%");
+
+    String temp1Sign = temp1 < 0 ? "" : "+";
+    String spacer1 = " ";
+    spacer1 += abs(temp1) < 10 ? " " : "";
+    spacer1 += abs(hum1) < 10 ? " " : "";
+    display.println(temp1Sign + Utilities::floatToString(temp1, 0) + spacer1 + hum1 + "%");
+
+    String temp2Sign = temp2 < 0 ? "" : "+";
+    String spacer2 = " ";
+    spacer2 += abs(temp2) < 10 ? " " : "";
+    spacer2 += abs(hum2) < 10 ? " " : "";
+    display.println(temp2Sign + Utilities::floatToString(temp2, 0) + spacer2 + hum2 + "%");
 
     display.setTextSize(2);
     display.println(customValue1);
@@ -114,22 +124,28 @@ void renderPage1(float intTemp, int intHum, float outTemp, int outHum, String cu
     display.display();
 }
 
-void sendTemperature()
+void updateDhtSensor()
 {
     Serial.println("sendTemperature");
 
-    float h = dht.readHumidity();    // reads humidity from senzor and save to h
-    float t = dht.readTemperature(); // reads temperature from senzor and save to t
-    if (isnan(h) || isnan(t))
+    dhtSensor.humidity = dht.readHumidity();
+    dhtSensor.temperature = dht.readTemperature();
+    if (isnan(dhtSensor.humidity) || isnan(dhtSensor.temperature))
     { // checks if readings from sensors were obtained
         Serial.println("sendTemperature error");
     }
     else
     {
-        Blynk.virtualWrite(1, t); // send to Blynk virtual pin 1 temperature value
-        Blynk.virtualWrite(3, h); // send to Blynk virtual pin 3 humidity value
-        renderPage1(t, h, outTemp, outHum, outConditions, customValue2);
+        Blynk.virtualWrite(1, dhtSensor.temperature); // send to Blynk virtual pin 1 temperature value
+        Blynk.virtualWrite(3, dhtSensor.humidity);    // send to Blynk virtual pin 3 humidity value
     }
+}
+
+void updateBmeSensor()
+{
+    bmeSensor.temperature = bme.readTemperature();
+    bmeSensor.humidity = bme.readHumidity();
+    bmeSensor.pressure = bme.readPressure() / 100.0F * 0.750062;
 }
 
 BLYNK_WRITE(V11)
@@ -137,7 +153,21 @@ BLYNK_WRITE(V11)
     customValue2 = param.asString();
     Serial.println("BLYNK_WRITE(V11): " + customValue2);
 
-   // Blynk.virtualWrite(5, 100);
+    // Blynk.virtualWrite(5, 100);
+}
+
+void updateHardwareSensors()
+{
+    updateDhtSensor();
+    updateBmeSensor();
+    renderPage1(dhtSensor.temperature, dhtSensor.humidity,
+                openWeatherSensor.temperature, openWeatherSensor.humidity,
+                openWeatherSensor.conditions, customValue2);
+}
+
+void updateRemoteSensors()
+{
+    updateOpenWeatherSensor();
 }
 
 void setup()
@@ -150,16 +180,20 @@ void setup()
 
     Blynk.begin(auth, ssid, pass);
 
-    sendTemperatureTimer.setInterval(10000L, sendTemperature);
-    updateOutTempTimer.setInterval(900000L, updateOutTemp);
+    if (!bme.begin()) {
+        Serial.println("Could not find a valid BME280 sensor, check wiring!");
+    }
 
-    sendTemperature();
-    updateOutTemp();
+    sendTemperatureTimer.setInterval(10000L, updateHardwareSensors);
+    updateOutTempTimer.setInterval(900000L, updateRemoteSensors);
+
+    updateDhtSensor();
+    updateOpenWeatherSensor();
 }
 
 void loop()
 {
-    Blynk.run();                
-    sendTemperatureTimer.run(); 
+    Blynk.run();
+    sendTemperatureTimer.run();
     updateOutTempTimer.run();
 }
