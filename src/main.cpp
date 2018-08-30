@@ -100,6 +100,15 @@ void updateOpenWeatherSensor()
     Serial.println(json);
 }
 
+void renderStartPage() 
+{
+    display.clearDisplay();
+    display.setCursor(0, 0);
+    display.setTextSize(2);
+    display.println("Starting");
+    display.display();
+}
+
 void renderPage1(float temp1, int hum1, float temp2, int hum2, String customValue1, String customValue2)
 {
     display.clearDisplay();
@@ -124,6 +133,36 @@ void renderPage1(float temp1, int hum1, float temp2, int hum2, String customValu
     display.display();
 }
 
+void renderPage2(float temp1, int hum1, float temp2, int hum2, float temp3, int hum3,
+    String customValue1, String customValue2)
+{
+    display.clearDisplay();
+    display.setCursor(0, 0);
+    display.setTextSize(2);
+
+    String temp1Sign = temp1 < 0 ? "" : "+";
+    String spacer1 = " ";
+    spacer1 += abs(temp1) < 10 ? " " : "";
+    spacer1 += abs(hum1) < 10 ? " " : "";
+    display.println(temp1Sign + Utilities::floatToString(temp1, 0) + spacer1 + hum1 + "%");
+
+    String temp2Sign = temp2 < 0 ? "" : "+";
+    String spacer2 = " ";
+    spacer2 += abs(temp2) < 10 ? " " : "";
+    spacer2 += abs(hum2) < 10 ? " " : "";
+    display.println(temp2Sign + Utilities::floatToString(temp2, 0) + spacer2 + hum2 + "%");
+
+    String temp3Sign = temp3 < 0 ? "" : "+";
+    String spacer3 = " ";
+    spacer3 += abs(temp3) < 10 ? " " : "";
+    spacer3 += abs(hum3) < 10 ? " " : "";
+    display.println(temp3Sign + Utilities::floatToString(temp3, 0) + spacer3 + hum3 + "%");
+
+    display.println(customValue1);
+    //display.println(customValue1 + "|" + customValue2);
+    display.display();
+}
+
 void updateDhtSensor()
 {
     Serial.println("sendTemperature");
@@ -131,7 +170,7 @@ void updateDhtSensor()
     dhtSensor.humidity = dht.readHumidity();
     dhtSensor.temperature = dht.readTemperature();
     if (isnan(dhtSensor.humidity) || isnan(dhtSensor.temperature))
-    { // checks if readings from sensors were obtained
+    {
         Serial.println("sendTemperature error");
     }
     else
@@ -160,7 +199,8 @@ void updateHardwareSensors()
 {
     updateDhtSensor();
     updateBmeSensor();
-    renderPage1(dhtSensor.temperature, dhtSensor.humidity,
+    renderPage2(dhtSensor.temperature, dhtSensor.humidity,
+                bmeSensor.temperature, bmeSensor.humidity,
                 openWeatherSensor.temperature, openWeatherSensor.humidity,
                 openWeatherSensor.conditions, customValue2);
 }
@@ -177,6 +217,7 @@ void setup()
     display.display();
     display.setTextColor(WHITE);
     display.setCursor(0, 0);
+    renderStartPage();
 
     Blynk.begin(auth, ssid, pass);
 
@@ -187,8 +228,8 @@ void setup()
     sendTemperatureTimer.setInterval(10000L, updateHardwareSensors);
     updateOutTempTimer.setInterval(900000L, updateRemoteSensors);
 
-    updateDhtSensor();
     updateOpenWeatherSensor();
+    updateDhtSensor();
 }
 
 void loop()
